@@ -10,18 +10,57 @@ namespace KucniSavetBackend.Controllers;
 [ApiController]
 public class UserController(IUserService userService) : ControllerBase
 {
-    private readonly IUserService _userService = userService;
-
     [HttpGet("{id}")]
     [Authorize]
-    public async Task<ActionResult> GetById(string id)
+    public async Task<IActionResult> GetById(string id)
     {
-        var user = await _userService.GetByIdAsync(id);
+        var user = await userService.GetByIdAsync(id);
 
         if (user is null)
             return NotFound();
         
-        return Ok(UserMapper.ToResponse(user));
+        return Ok(user.ToResponse());
+    }
+
+    [HttpGet("{id}/image")]
+    public async Task<IActionResult> GetUserImage([FromRoute] string id)
+    {
+        var profileImage = await userService.GetProfileImageAsync(id);
+        if (profileImage is null)
+            return NotFound();
+
+        return File(profileImage.Stream, profileImage.ContentType);
+    }
+
+    [HttpGet("household")]
+    [Authorize]
+    public async Task<IActionResult> GetUsersByHouseholdId()
+    {
+        var householdId = User.FindFirst("householdId")?.Value;
+        
+        if (householdId is null)
+            return BadRequest();
+        
+        var users =  await userService.GetAllByHouseholdIdAsync(householdId);
+        
+        return Ok(users.Select(user => user.ToResponse()).ToList());
+    }
+
+    [HttpGet]
+    [Authorize]
+    public async Task<IActionResult> CurrentUserData()
+    {
+        var userId = User.FindFirst("userId")?.Value;
+
+        if (userId is null)
+            return Forbid();
+
+        var user = await userService.GetByIdAsync(userId);
+
+        if (user is null)
+            return NotFound();
+
+        return Ok(user.ToResponse());
     }
 
     // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
@@ -29,16 +68,12 @@ public class UserController(IUserService userService) : ControllerBase
     [Authorize]
     public async Task<ActionResult> Create(User user)
     {
-        try
-        {
-            var created = await _userService.CreateAsync(user);
+        var created = await userService.CreateAsync(user);
+            
+        if (created is null)
+            return BadRequest();
 
-            return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
-        }
-        catch (Exception e)
-        {
-            return BadRequest(new { message = e.Message });
-        }
+        return Ok(created.ToResponse());
     }
 
     [HttpPost("add-to-household")]
@@ -50,8 +85,8 @@ public class UserController(IUserService userService) : ControllerBase
         if (householdId is null)
             return BadRequest();
 
-        var user = await _userService.CreateWithInviteCodeAsync(name, householdId);
+        var user = await userService.CreateWithInviteCodeAsync(name, householdId);
 
-        return Ok(UserMapper.ToResponse(user));
+        return Ok(user?.ToResponse());
     }
 }

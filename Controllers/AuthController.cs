@@ -8,29 +8,27 @@ namespace KucniSavetBackend.Controllers;
 [ApiController]
 public class AuthController(IAuthService authService) : ControllerBase
 {
-    private readonly IAuthService _authService = authService;
-
     [HttpPost("login")]
     public async Task<IActionResult> FacebookLogin([FromBody] CreateUserRequest request)
     {
-        var user = await _authService.LoginOrRegisterWithFacebookAsync(request.FacebookAccessToken);
+        var user = await authService.LoginOrRegisterWithFacebookAsync(request.FacebookAccessToken);
 
         if (user is null)
             return BadRequest();
 
-        var jwt = _authService.GenerateJwt(user);
+        var jwt = authService.GenerateJwt(user);
         return Ok(new { token = jwt });
     }
 
     [HttpPost("register/{inviteCode}")]
     public async Task<IActionResult> InviteCodeLogin([FromBody] CreateUserRequest request, [FromRoute] string inviteCode)
     {
-        var user = await _authService.RegisterWithFacebookAndInviteCodeAsync(request.FacebookAccessToken, inviteCode);
+        var user = await authService.RegisterWithFacebookAndInviteCodeAsync(request.FacebookAccessToken, inviteCode);
 
         if (user is null)
             return BadRequest();
 
-        var jwt = _authService.GenerateJwt(user);
+        var jwt = authService.GenerateJwt(user);
 
         return Ok(new { token = jwt });
     }

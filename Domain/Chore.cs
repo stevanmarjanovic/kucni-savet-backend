@@ -4,8 +4,8 @@ namespace KucniSavetBackend.Domain;
 
 public class Chore
 {
-    public string? Id { get; set; }
-    public string? HouseholdId { get; set; }
+    public string? Id { get; init; }
+    public required Household Household { get; init; }
     public required string Name { get; set; }
     public required Frequency Frequency { get; set; }
     public DateTime? LastDone { get; set; }

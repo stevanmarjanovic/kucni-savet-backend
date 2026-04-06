@@ -1,6 +1,6 @@
 using KucniSavetBackend.Enums;
 
-namespace KucniSavetBackend.DTO.Requests.User;
+namespace KucniSavetBackend.DTO.Requests.Chore;
 
 public class UpdateChoreRequest
 {

@@ -1,6 +1,8 @@
 using KucniSavetBackend.Domain;
 using KucniSavetBackend.Interfaces.Repositories;
+using KucniSavetBackend.Mappers;
 using KucniSavetBackend.Persistance.Documents;
+using Microsoft.AspNetCore.Http.Metadata;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 
@@ -8,144 +10,134 @@ namespace KucniSavetBackend.Repositories.RavenDB;
 
 public class UserRepository(IAsyncDocumentSession session) : IUserRepository
 {
-    private readonly IAsyncDocumentSession _session = session;
-    private static readonly string _prefix = nameof(UserDocument);
-    public static string Id(string key) => $"{_prefix}s/{key}";
-
-    public async Task<User?> GetByIdAsync(string key, bool prefixed = false)
+    private const string ProfileImageFileName = "profile.jpg";
+    public async Task<User?> GetByIdAsync(string key)
     {
-        string id = prefixed ? key : Id(key);
+        var id = RavenIdMapper.UserId(key);
 
-        var doc = await _session.LoadAsync<UserDocument>(id);
+        var doc = await session.LoadAsync<UserDocument>(id);
 
         if (doc is null)
             return null;
+        
+        var household = await session.LoadAsync<HouseholdDocument>(doc.HouseholdId);
 
-        var user = new User
-        {
-            Id = doc.Id,
-            Name = doc.Name,
-            Image = doc.Image,
-            InviteCode = doc.InviteCode
-        };
+        return doc.ToDomain(household);
+    }
 
-        if (doc.HouseholdId is not null)
-        {
-            var household = await _session.LoadAsync<HouseholdDocument>(doc.HouseholdId);
-            user.Household = new Household
-            {
-                Id = household.Id,
-                Name = household.Name
-            };
-        }
+    public async Task<List<User>> GetAllByHouseholdIdAsync(string householdId)
+    {
+        householdId = RavenIdMapper.HouseholdId(householdId);
+        
+        var docs = await session.Query<UserDocument>()
+            .Include(householdId)
+            .Where(user => user.HouseholdId == householdId)
+            .ToListAsync();
+        
+        var household = await session.LoadAsync<HouseholdDocument>(householdId);
 
-        return user;
+        return docs.Select(doc => doc.ToDomain(household)).ToList();
     }
 
     public async Task<User?> GetByFacebookIdAsync(string facebookId)
     {
-        var doc = await _session.Query<UserDocument>()
+        var doc = await session.Query<UserDocument>()
+            .Include(user => user.HouseholdId)
             .Where(user => user.FacebookId == facebookId)
             .FirstOrDefaultAsync();
 
         if (doc is null) return null;
 
-        var user = new User
-        {
-            Id = doc.Id,
-            Name = doc.Name,
-            Image = doc.Image,
-            InviteCode = doc.InviteCode
-        };
+        var household = await session.LoadAsync<HouseholdDocument>(doc.HouseholdId);
 
-        if (doc.HouseholdId is not null)
-        {
-            var household = await _session.LoadAsync<HouseholdDocument>(doc.HouseholdId);
-            user.Household = new Household
-            {
-                Id = household.Id,
-                Name = household.Name
-            };
-        }
-
-        return user;
+        return doc.ToDomain(household);
     }
 
     public async Task<User?> GeyByInviteCodeAsync(string inviteCode)
     {
-        var doc = await _session.Query<UserDocument>()
+        var doc = await session.Query<UserDocument>()
+            .Include(user => user.HouseholdId)
             .Where(user => user.InviteCode == inviteCode)
             .FirstOrDefaultAsync();
 
         if (doc is null)
             return null;
 
-        var user = new User
-        {
-            Id = doc.Id,
-            Name = doc.Name,
-            Image = doc.Image,
-            InviteCode = doc.InviteCode
-        };
-
-        if (doc.HouseholdId is not null)
-        {
-            var household = await _session.LoadAsync<HouseholdDocument>(doc.HouseholdId);
-            user.Household = new Household
-            {
-                Id = household.Id,
-                Name = household.Name
-            };
-        }
-
-        return user;
+        var household = await session.LoadAsync<HouseholdDocument>(doc.HouseholdId);
+        
+        return doc.ToDomain(household);
     }
 
-    public async Task<User?> CreateAsync(User? user)
+    public async Task<ProfileImage?> GetUserImageById(string key)
     {
-        if (user is null)
+        var userId = RavenIdMapper.UserId(key);
+        var attachment = await session.Advanced.Attachments.GetAsync(userId, ProfileImageFileName);
+
+        if (attachment is null)
             return null;
 
+        return new ProfileImage
+        {
+            Stream = attachment.Stream,
+            ContentType = attachment.Details.ContentType
+        };
+    }
+
+    public async Task<User?> CreateAsync(User user, string? imageBase64 = null)
+    {
         var doc = new UserDocument
         {
-            Name = user.Name,
-            Image = user.Image,
-            FacebookId = user.FacebookId,
-            HouseholdId = user.Household?.Id,
-            InviteCode = user.InviteCode
+            Name = user.Name ?? "",
+            FacebookId = user.FacebookId ?? "",
+            HouseholdId = RavenIdMapper.HouseholdId(user.Household?.Id ?? ""),
+            InviteCode = user.InviteCode ?? ""
         };
+        
+        await session.StoreAsync(doc);
 
-        await _session.StoreAsync(doc);
-        await _session.SaveChangesAsync();
+        if (imageBase64 is not null)
+        {
+            var bytes = Convert.FromBase64String(imageBase64);
+            var stream = new MemoryStream(bytes);
+            session.Advanced.Attachments.Store(doc, ProfileImageFileName, stream, "image/jpeg");
+        }
+        var  household = await session.LoadAsync<HouseholdDocument>(doc.HouseholdId);
 
-        return await GetByIdAsync(doc.Id, true);
+        
+        await session.SaveChangesAsync();
+        
+        return doc.ToDomain(household);
     }
 
     public async Task<User?> UpdateAsync(User user)
     {
-        var doc = await _session.LoadAsync<UserDocument>(user.Id);
+        var doc = await session.Include<UserDocument>(userDocument => userDocument.HouseholdId).LoadAsync<UserDocument>(user.Id);
 
-        doc.Name = user.Name;
-        doc.Image = user.Image;
-        doc.FacebookId = user.FacebookId;
-        doc.InviteCode = user.InviteCode;
+        doc.Name = user.Name ?? doc.Name;
+        doc.FacebookId = user.FacebookId ?? doc.FacebookId;
+        doc.InviteCode = user.InviteCode ?? doc.InviteCode;
 
-        await _session.SaveChangesAsync();
+        await session.SaveChangesAsync();
+        
+        var household = await session.LoadAsync<HouseholdDocument>(doc.HouseholdId);
 
-        return await GetByIdAsync(doc.Id, true);
+        return doc.ToDomain(household);
     }
 
-    public async Task DeleteAsync(string key, bool prefixed = false)
+    public async Task DeleteAsync(string key)
     {
-        string id = prefixed ? key : Id(key);
+        var id = RavenIdMapper.UserId(key);
 
-        _session.Delete(id);
+        session.Delete(id);
 
-        await _session.SaveChangesAsync();
+        await session.SaveChangesAsync();
     }
 
     public async Task DeleteAsync(User user)
     {
-        await DeleteAsync(user.Id, true);
+        if (user.Id is null)
+            return;
+        
+        await DeleteAsync(user.Id);
     }
 }

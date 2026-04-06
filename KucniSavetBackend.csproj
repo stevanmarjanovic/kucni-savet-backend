@@ -25,4 +25,8 @@
     <PackageReference Include="RavenDB.Cloud.Api.Client" Version="1.0.3" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Persistance\Documents\" />
+  </ItemGroup>
+
 </Project>

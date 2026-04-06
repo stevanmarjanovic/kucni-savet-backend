@@ -2,10 +2,9 @@ namespace KucniSavetBackend.Domain;
 
 public class User
 {
-    public string? Id { get; set; } = null;
-    public string? Image { get; set; } = null;
-    public string? Name { get; set; } = null;
-    public string? FacebookId { get; set; } = null;
-    public Household? Household { get; set; } = null;
-    public string? InviteCode { get; set; } = null;
+    public string? Id { get; init; }
+    public string? Name { get; set; }
+    public string? FacebookId { get; set; }
+    public Household? Household { get; init; }
+    public string? InviteCode { get; set; }
 }

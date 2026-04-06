@@ -5,7 +5,6 @@ using KucniSavetBackend.Authorization.Requirements;
 using KucniSavetBackend.Interfaces.Repositories;
 using KucniSavetBackend.Interfaces.Services;
 using KucniSavetBackend.Middleware;
-using KucniSavetBackend.Repositories;
 using KucniSavetBackend.Repositories.RavenDB;
 using KucniSavetBackend.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -16,6 +15,17 @@ using Raven.Client.Documents.Session;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("ViteDevCors", policy =>
+    {
+        policy
+            .WithOrigins("https://localhost:5173")
+            .AllowAnyMethod()
+            .AllowAnyHeader();
+    });
+});
+
 // Add services to the container.
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
@@ -23,7 +33,10 @@ builder.Services.AddOpenApi();
 builder.Services.AddSingleton<IDocumentStore>(sp =>
 {
     var configuration = sp.GetRequiredService<IConfiguration>();
-    X509Certificate2 clientCertificate = new("./Secret/cert.pfx");
+    var clientCertificate = X509CertificateLoader.LoadPkcs12FromFile(
+        "./Secret/cert.pfx",
+        password: null
+    );
 
     var store = new DocumentStore
     {
@@ -62,7 +75,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Secret"])
+                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Secret"]!)
             )
         };
     });
@@ -88,6 +101,7 @@ if (app.Environment.IsDevelopment())
 }
 app.UseMiddleware<ExceptionMiddleware>();
 
+app.UseCors("ViteDevCors");
 app.UseHttpsRedirection();
 
 app.UseAuthentication();

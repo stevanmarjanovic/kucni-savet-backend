@@ -1,6 +1,4 @@
 using KucniSavetBackend.Domain;
-using KucniSavetBackend.DTO.Requests.User;
-using KucniSavetBackend.DTO.Responses;
 
 namespace KucniSavetBackend.Interfaces.Services;
 

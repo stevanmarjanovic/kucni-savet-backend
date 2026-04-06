@@ -1,85 +1,103 @@
 using KucniSavetBackend.Domain;
 using KucniSavetBackend.Interfaces.Repositories;
+using KucniSavetBackend.Mappers;
 using KucniSavetBackend.Persistance.Documents;
-using KucniSavetBackend.Repositories.RavenDB;
+using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 
-namespace KucniSavetBackend.Repositories;
+namespace KucniSavetBackend.Repositories.RavenDB;
 
 public class ChoreRepository(IAsyncDocumentSession session) : IChoreRepository
 {
-    private readonly IAsyncDocumentSession _session = session;
-    private static readonly string _prefix = nameof(ChoreDocument);
-    public static string Id(string key) => $"{_prefix}s/{key}";
-
     public async Task<Chore?> CreateAsync(Chore? chore)
     {
         if (chore is null)
             return null;
 
-        var assignees = chore.Assignees;
+        var householdId = RavenIdMapper.HouseholdId(chore.Household.Id);
+
         var doc = new ChoreDocument
         {
-            HouseholdId = chore.HouseholdId,
+            HouseholdId = householdId,
             Frequency = chore.Frequency,
             Name = chore.Name,
             LastDone = chore.LastDone,
-            AssigneesIds = chore.Assignees.Select(assignee => assignee.Id).ToList()
+            AssigneesIds = chore.Assignees.Select(assignee => assignee.Id!).ToList()
         };
 
-        await _session.StoreAsync(doc);
-        await _session.SaveChangesAsync();
-
-        return await GetByIdAsync(doc.Id, true);
+        await session.StoreAsync(doc);
+        await session.SaveChangesAsync();
+        
+        return doc.ToDomain();
     }
 
-    public async Task<Chore?> GetByIdAsync(string key, bool prefixed = false)
+    public async Task<Chore?> GetByIdAsync(string key)
     {
-        string id = prefixed ? key : Id(key);
+        var id = RavenIdMapper.ChoreId(key);
 
-        var doc = await _session.LoadAsync<ChoreDocument>(id);
-        var assignees = await _session.LoadAsync<UserDocument>(doc.AssigneesIds);
+        var doc = await session
+            .Include<ChoreDocument>(chore => chore.AssigneesIds)
+            .Include(chore => chore.HouseholdId)
+            .LoadAsync<ChoreDocument>(id);
+        var assignees = await session.LoadAsync<UserDocument>(doc.AssigneesIds);
+        var household = await session.LoadAsync<HouseholdDocument>(doc.HouseholdId);
 
-        return new Chore
-        {
-            Id = doc.Id,
-            HouseholdId = doc.HouseholdId,
-            Name = doc.Name,
-            Frequency = doc.Frequency,
-            LastDone = doc.LastDone,
-            Assignees = assignees.Values.Select(assignee => new User
-            {
-                Id = assignee.Id,
-                Image = assignee.Image,
-                Name = assignee.Name,
-                // TODO Dodati household objekat
-            }).ToList()
-        };
+        return doc.ToDomain(assignees.Values.ToList(), household);
+    }
+
+    public async Task<List<Chore>> GetByHouseholdIdAsync(string householdId)
+    {
+        householdId = RavenIdMapper.HouseholdId(householdId);
+        
+        var docs = await session.Query<ChoreDocument>()
+            .Include(doc => doc.AssigneesIds)
+            .Include(doc => householdId)
+            .Where(chore => chore.HouseholdId == householdId)
+            .ToListAsync();
+        
+        var usersIds = docs.SelectMany(doc => doc.AssigneesIds).ToList();
+        var userDocuments = await session.LoadAsync<UserDocument>(usersIds);
+        var householdDocument = await session.LoadAsync<HouseholdDocument>(householdId);
+        
+        return docs.Select(doc => doc.ToDomain(userDocuments.Values.ToList(), householdDocument)).ToList();
     }
 
     public async Task<Chore?> UpdateAsync(Chore chore)
     {
-        var doc = await _session.LoadAsync<ChoreDocument>(chore.Id);
+        if (chore.Id is null)
+            return null;
+        
+        var choreId = RavenIdMapper.ChoreId(chore.Id);
+        var doc = await session
+            .Include<ChoreDocument>(choreDocument => choreDocument.HouseholdId)
+            .Include<ChoreDocument>(choreDocument => choreDocument.AssigneesIds)
+            .LoadAsync<ChoreDocument>(choreId);
         
         doc.Name = chore.Name;
         doc.Frequency = chore.Frequency;
         doc.LastDone = chore.LastDone;
-        doc.AssigneesIds = chore.Assignees.Select(assignee => assignee.Id).ToList();
+        doc.AssigneesIds = chore.Assignees.Select(assignee => RavenIdMapper.UserId(assignee.Id!)).ToList();
+        
+        var assignees = await session.LoadAsync<UserDocument>(doc.AssigneesIds);
+        var household = await session.LoadAsync<HouseholdDocument>(doc.HouseholdId);
 
-        await _session.SaveChangesAsync();
+        await session.SaveChangesAsync();
 
-        return await GetByIdAsync(doc.Id, true);
+        return doc.ToDomain(assignees.Values.ToList(), household);
     }
 
-    public async Task DeleteAsync(string key, bool prefixed = false)
+    public async Task DeleteAsync(string key)
     {
-        string id = prefixed ? key : Id(key);
-        _session.Delete(id);
-        await _session.SaveChangesAsync();
+        var id = RavenIdMapper.ChoreId(key);
+        session.Delete(id);
+        await session.SaveChangesAsync();
     }
 
     public async Task DeleteAsync(Chore chore)
     {
-        await DeleteAsync(chore.Id, true);
+        if (chore.Id is null)
+            return;
+        
+        await DeleteAsync(chore.Id);
     }
 }

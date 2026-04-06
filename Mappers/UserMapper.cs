@@ -1,23 +1,27 @@
 using KucniSavetBackend.Domain;
 using KucniSavetBackend.DTO.Responses;
+using KucniSavetBackend.Persistance.Documents;
 
 namespace KucniSavetBackend.Mappers;
 
 public static class UserMapper
 {
-    public static UserResponse? ToResponse(User? user) => new UserResponse
-    {
-        Id = user.Id,
-        Name = user.Name,
-        Image = user.Image,
-        Household = user.Household is not null ? HouseholdMapper.ToResponse(user.Household) : null,
-    } ?? null;
+    public static UserResponse ToResponse(this User user) {
+        return new UserResponse
+        {
+            Id = user.Id ?? "",
+            Name = user?.Name ?? "",
+            Household = user?.Household?.ToResponse()
+        };
+    }
 
-    public static User? ToDomain(UserResponse? user) => new User
+    public static User ToDomain(this UserDocument user, HouseholdDocument? household = null)
     {
-        Id = user.Id,
-        Name = user.Name,
-        Image = user.Image,
-        Household = user.Household is not null ? HouseholdMapper.ToDomain(user.Household) : null,
-    } ?? null;
+        return new User
+        {
+            Id = user.Id.Split('/').Last(),
+            Name = user.Name,
+            Household = household?.ToDomain()
+        };
+    }
 }
