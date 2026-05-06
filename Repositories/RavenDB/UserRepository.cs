@@ -10,7 +10,7 @@ namespace KucniSavetBackend.Repositories.RavenDB;
 
 public class UserRepository(IAsyncDocumentSession session) : IUserRepository
 {
-    private const string ProfileImageFileName = "profile.jpg";
+    private const string ProfileImageFileName = "profile.png";
     public async Task<User?> GetByIdAsync(string key)
     {
         var id = RavenIdMapper.UserId(key);

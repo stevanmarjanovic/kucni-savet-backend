@@ -6,7 +6,7 @@ namespace KucniSavetBackend.Services;
 
 public class UserService(IUserRepository userRepository, IHouseholdRepository householdRepository, HttpClient client) : IUserService
 {
-    private const string DiceBearUri = "https://api.dicebear.com/9.x/croodles/jpg";
+    private const string DiceBearUri = "https://api.dicebear.com/9.x/croodles/png";
 
     public async Task<User?> CreateAsync(User? user)
     {

@@ -12,7 +12,7 @@ namespace KucniSavetBackend.Services;
 public class AuthService(IUserRepository userRepository, IHouseholdRepository householdRepository, IConfiguration configuration, HttpClient client) : IAuthService
 {
     private const string FacebookUri = "https://graph.facebook.com/v25.0";
-    private const string DiceBearUri = "https://api.dicebear.com/9.x/croodles/jpg";
+    private const string DiceBearUri = "https://api.dicebear.com/9.x/croodles/png";
 
     public string GenerateJwt(User user)
     {
